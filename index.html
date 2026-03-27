@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
+<title>RemoteLink v2 — Contrôle réel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{
+  --bg:#050810;--bg2:#080d1a;--s:#0d1526;--s2:#111d32;
+  --b:#18304e;--bh:#274878;
+  --blue:#4a9eff;--blue2:#3d9bff22;
+  --cyan:#00e8ff;--cyan2:#00e8ff1a;
+  --green:#00ffa3;--green2:#00ffa31a;
+  --amber:#ffbe00;--red:#ff3f57;
+  --txt:#b8cfe8;--txth:#e2eeff;--txtd:#3d5570;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'DM Sans',sans-serif;
+  --r:12px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--txt);font-family:var(--sans);overflow-x:hidden}
+
+/* NOISE */
+body::before{content:'';position:fixed;inset:0;z-index:0;opacity:.03;
+background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+pointer-events:none}
+
+/* GRID BG */
+body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+background-image:linear-gradient(var(--b) 1px,transparent 1px),linear-gradient(90deg,var(--b) 1px,transparent 1px);
+background-size:48px 48px;opacity:.3;}
+
+#app{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column}
+
+/* ── HEADER ─────────────────────────────────────────────── */
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 28px;border-bottom:1px solid var(--b);
+  background:rgba(5,8,16,.92);backdrop-filter:blur(16px);
+  position:sticky;top:0;z-index:100;
+}
+.logo{display:flex;align-items:center;gap:11px;font-family:var(--mono);font-size:16px;font-weight:700;color:var(--txth)}
+.logo-icon{
+  width:32px;height:32px;border-radius:8px;
+  background:linear-gradient(135deg,var(--blue),var(--cyan));
+  display:grid;place-items:center;font-size:17px;
+  box-shadow:0 0 18px #4a9eff44;
+}
+.logo em{color:var(--cyan);font-style:normal}
+.logo-v{font-size:11px;color:var(--txtd);margin-left:2px;font-weight:400}
+
+.mode-toggle{display:flex;gap:3px;background:var(--s);border:1px solid var(--b);border-radius:9px;padding:3px}
+.mbn{padding:8px 20px;border:none;cursor:pointer;border-radius:7px;
+  font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;
+  background:transparent;color:var(--txtd);transition:all .2s}
+.mbn.on{background:var(--blue);color:#fff;box-shadow:0 0 16px var(--blue2)}
+
+/* ── MAIN ────────────────────────────────────────────────── */
+main{flex:1;padding:28px 20px;max-width:880px;margin:0 auto;width:100%}
+.panel{display:none}.panel.on{display:block}
+
+/* ── CARD ────────────────────────────────────────────────── */
+.card{background:var(--s);border:1px solid var(--b);border-radius:var(--r);
+  padding:24px;margin-bottom:18px;animation:fadeUp .3s ease both}
+.card:nth-child(2){animation-delay:.07s}.card:nth-child(3){animation-delay:.14s}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+.ctitle{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:2px;
+  text-transform:uppercase;color:var(--txtd);margin-bottom:18px;
+  display:flex;align-items:center;gap:8px}
+.ctitle::before{content:'//';color:var(--blue);font-size:12px}
+
+/* ── AGENT STATUS BANNER ──────────────────────────────────── */
+.agent-banner{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 18px;border-radius:10px;margin-bottom:18px;
+  border:1px solid var(--b);background:var(--bg2);
+  font-family:var(--mono);font-size:12px;
+  transition:all .3s;
+}
+.agent-banner.ok{border-color:#00ffa344;background:#00ffa308}
+.agent-banner.err{border-color:#ff3f5744;background:#ff3f5708}
+.agent-banner.wait{border-color:#ffbe0044;background:#ffbe0008}
+.ab-dot{width:9px;height:9px;border-radius:50%;background:var(--txtd);flex-shrink:0;transition:background .3s}
+.agent-banner.ok  .ab-dot{background:var(--green);box-shadow:0 0 8px var(--green)}
+.agent-banner.err .ab-dot{background:var(--red)}
+.agent-banner.wait .ab-dot{background:var(--amber);animation:blink 1.4s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.ab-txt{flex:1;color:var(--txt)}
+.ab-btn{font-family:var(--mono);font-size:10px;font-weight:700;
+  padding:5px 12px;border-radius:6px;border:1px solid var(--bh);
+  background:transparent;color:var(--blue);cursor:pointer;letter-spacing:.5px;text-transform:uppercase;
+  transition:all .2s}
+.ab-btn:hover{background:var(--blue2);border-color:var(--blue)}
+
+/* ── CODE DISPLAY ─────────────────────────────────────────── */
+.code-row{display:flex;gap:7px;justify-content:center;margin:20px 0}
+.cc{
+  width:56px;height:70px;background:var(--bg2);border:1.5px solid var(--bh);
+  border-radius:10px;display:grid;place-items:center;
+  font-family:var(--mono);font-size:28px;font-weight:700;color:var(--cyan);
+  text-shadow:0 0 18px var(--cyan);
+  box-shadow:0 0 20px var(--cyan2),inset 0 0 10px var(--cyan2);
+}
+
+/* ── QR ───────────────────────────────────────────────────── */
+.qr-row{display:flex;gap:22px;align-items:center;
+  padding:18px;background:var(--bg2);border:1px solid var(--b);border-radius:10px;margin:12px 0}
+#qr-box{background:var(--s2);padding:10px;border-radius:8px;border:1px solid var(--b);flex-shrink:0}
+#qr-box img,#qr-box canvas{display:block;border-radius:4px}
+.qr-txt{font-size:13px;color:var(--txtd);line-height:1.8}
+.qr-txt strong{color:var(--txth);display:block;margin-bottom:5px;font-size:14px}
+
+/* ── BTN ──────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:9px;
+  border:none;cursor:pointer;font-family:var(--mono);font-size:12px;font-weight:600;
+  letter-spacing:.5px;transition:all .2s;user-select:none;text-transform:uppercase}
+.btn-p{background:linear-gradient(135deg,var(--blue),#5b74ff);color:#fff;box-shadow:0 4px 20px var(--blue2)}
+.btn-p:hover{transform:translateY(-1px);box-shadow:0 6px 28px #4a9eff44}
+.btn-p:active{transform:none}
+.btn-p:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-g{background:transparent;border:1px solid var(--bh);color:var(--txt)}
+.btn-g:hover{background:var(--s2);border-color:var(--blue);color:var(--blue)}
+.btn-d{background:linear-gradient(135deg,#ff2244,#ff3f57);color:#fff;box-shadow:0 4px 14px #ff3f5744}
+.btn-d:hover{transform:translateY(-1px)}
+.btn-sm{padding:7px 14px;font-size:10px}
+.spin{width:13px;height:13px;border:2px solid transparent;border-top-color:currentColor;
+  border-radius:50%;animation:spinning .7s linear infinite;display:inline-block}
+@keyframes spinning{to{transform:rotate(360deg)}}
+
+/* ── STATUS ───────────────────────────────────────────────── */
+.sbar{display:flex;align-items:center;gap:9px;padding:10px 15px;
+  background:var(--bg2);border:1px solid var(--b);border-radius:8px;
+  font-family:var(--mono);font-size:11px;color:var(--txtd);margin:14px 0;transition:all .3s}
+.sd{width:7px;height:7px;border-radius:50%;background:var(--txtd);flex-shrink:0;transition:background .3s}
+.sbar.idle   .sd{background:var(--txtd)}
+.sbar.wait   .sd{background:var(--amber);animation:blink 1.4s infinite}
+.sbar.conn   .sd{background:var(--green);box-shadow:0 0 7px var(--green)}
+.sbar.err    .sd{background:var(--red)}
+
+/* ── PREVIEW ──────────────────────────────────────────────── */
+.pview-wrap{
+  position:relative;background:#000;border:1px solid var(--b);
+  border-radius:10px;overflow:hidden;aspect-ratio:16/9;max-height:320px;
+}
+.pview-wrap video{width:100%;height:100%;object-fit:contain;display:block}
+.pover{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;background:var(--s);
+  gap:10px;font-family:var(--mono);font-size:11px;color:var(--txtd);
+}
+#remote-cur{
+  position:absolute;width:20px;height:20px;pointer-events:none;z-index:10;
+  transform:translate(-4px,-2px);display:none;
+  filter:drop-shadow(0 0 4px rgba(0,232,255,.8));
+}
+.rclick-ring{
+  position:absolute;border-radius:50%;pointer-events:none;z-index:11;
+  transform:translate(-50%,-50%);animation:ring .5s ease-out forwards;
+}
+@keyframes ring{
+  from{opacity:1;transform:translate(-50%,-50%) scale(.3)}
+  to  {opacity:0;transform:translate(-50%,-50%) scale(1.6)}
+}
+
+/* ── STEPS ────────────────────────────────────────────────── */
+.steps{display:flex;flex-direction:column;gap:11px}
+.step{display:flex;align-items:flex-start;gap:12px;
+  padding:13px;background:var(--bg2);border:1px solid var(--b);border-radius:9px}
+.snum{width:26px;height:26px;border-radius:50%;flex-shrink:0;
+  background:var(--blue2);border:1px solid var(--blue);
+  display:grid;place-items:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--blue)}
+.stxt{font-size:13px;color:var(--txtd);line-height:1.7}
+.stxt strong{color:var(--txth)}
+
+/* ── BADGE ────────────────────────────────────────────────── */
+.badge{display:inline-flex;align-items:center;gap:4px;
+  padding:3px 9px;border-radius:20px;font-size:10px;font-family:var(--mono);font-weight:700}
+.bg-g{background:var(--green2);color:var(--green)}
+.bg-b{background:var(--blue2);color:var(--blue)}
+.bg-a{background:#ffbe001a;color:var(--amber)}
+
+/* ── NOTICE ───────────────────────────────────────────────── */
+.notice{display:flex;gap:9px;padding:12px 14px;border-radius:8px;
+  background:#ffbe000c;border:1px solid #ffbe0028;
+  font-size:12px;color:var(--txtd);line-height:1.7;margin-top:12px}
+.ni{color:var(--amber);flex-shrink:0;margin-top:1px}
+
+/* ── PHONE CODE INPUT ─────────────────────────────────────── */
+.ci-row{display:flex;gap:7px;justify-content:center;margin:22px 0}
+.ci{width:50px;height:62px;background:var(--bg2);border:1.5px solid var(--bh);border-radius:10px;
+  text-align:center;font-family:var(--mono);font-size:24px;font-weight:700;
+  color:var(--cyan);caret-color:var(--cyan);outline:none;text-transform:uppercase;transition:all .2s}
+.ci:focus{border-color:var(--cyan);box-shadow:0 0 16px var(--cyan2)}
+
+/* ══════════════════════════════════════════════════════════
+   PHONE VIEWER FULLSCREEN
+══════════════════════════════════════════════════════════ */
+#pviewer{
+  position:fixed;inset:0;z-index:200;background:#000;
+  display:none;flex-direction:column;
+}
+#pviewer.on{display:flex}
+
+#rvideo{flex:1;width:100%;object-fit:contain;display:block;touch-action:none;cursor:crosshair}
+
+/* Touch feedback */
+.tdot{
+  position:fixed;pointer-events:none;z-index:300;border-radius:50%;
+  transform:translate(-50%,-50%);animation:tdout .4s ease-out forwards;
+}
+.tdot.left  {width:28px;height:28px;border:2.5px solid var(--cyan);background:var(--cyan2)}
+.tdot.right {width:32px;height:32px;border:2.5px solid var(--amber);background:#ffbe001a}
+.tdot.double{width:36px;height:36px;border:2.5px solid var(--green);background:var(--green2)}
+@keyframes tdout{to{opacity:0;transform:translate(-50%,-50%) scale(1.7)}}
+
+/* ── PHONE TOP BAR ──────────────────────────────────────── */
+.ptop{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;background:rgba(5,8,16,.96);
+  border-bottom:1px solid var(--b);backdrop-filter:blur(12px);flex-shrink:0;
+}
+.ptop-title{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--txth);
+  display:flex;align-items:center;gap:8px}
+.ptop-dot{width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 7px var(--green);animation:blink 2s infinite}
+.ptop-lat{font-family:var(--mono);font-size:10px;color:var(--txtd)}
+
+/* ── URL BAR ─────────────────────────────────────────────── */
+.urlbar{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 14px;background:rgba(8,13,26,.97);
+  border-bottom:1px solid var(--b);flex-shrink:0;
+}
+#url-input{
+  flex:1;padding:8px 12px;background:var(--s);border:1px solid var(--bh);
+  border-radius:7px;font-family:var(--sans);font-size:13px;color:var(--txth);
+  outline:none;
+}
+#url-input:focus{border-color:var(--cyan)}
+#url-input::placeholder{color:var(--txtd)}
+.url-btn{padding:7px 13px;border:none;border-radius:7px;cursor:pointer;
+  font-family:var(--mono);font-size:11px;font-weight:600;text-transform:uppercase;
+  background:var(--blue);color:#fff;flex-shrink:0;transition:all .2s}
+.url-btn:hover{background:#3d8ee8}
+
+/* ── PHONE TOOLBAR ───────────────────────────────────────── */
+.ptbar{
+  display:flex;align-items:center;justify-content:space-around;
+  padding:8px 8px 12px;background:rgba(5,8,16,.97);
+  border-top:1px solid var(--b);backdrop-filter:blur(12px);flex-shrink:0;
+}
+.tb{display:flex;flex-direction:column;align-items:center;gap:3px;
+  background:none;border:none;cursor:pointer;color:var(--txtd);
+  font-family:var(--sans);font-size:9px;padding:8px 10px;border-radius:8px;transition:all .2s;
+  -webkit-tap-highlight-color:transparent;
+}
+.tb:active,.tb.active{color:var(--cyan);background:var(--cyan2)}
+.tb svg{width:20px;height:20px}
+.tb.danger{color:var(--red)}
+.tb.danger:active{color:var(--red);background:#ff3f5712}
+
+/* ── RIGHT CLICK MODE INDICATOR ─────────────────────────── */
+#rclick-ind{
+  position:fixed;bottom:80px;right:14px;z-index:250;
+  background:#ffbe00;color:#000;font-family:var(--mono);font-size:10px;font-weight:700;
+  padding:5px 11px;border-radius:20px;letter-spacing:.5px;
+  display:none;
+  box-shadow:0 0 12px #ffbe0088;
+}
+#rclick-ind.on{display:block;animation:popIn .2s ease both}
+@keyframes popIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+
+/* ── KEYBOARD OVERLAY ────────────────────────────────────── */
+#kb{
+  position:fixed;inset:0;z-index:400;
+  background:rgba(5,8,16,.88);backdrop-filter:blur(14px);
+  display:none;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding:16px;
+}
+#kb.on{display:flex}
+.kb-card{
+  background:var(--s2);border:1px solid var(--bh);border-radius:14px;
+  padding:18px;width:100%;max-width:520px;
+}
+.kb-tabs{display:flex;gap:4px;margin-bottom:14px;background:var(--bg2);
+  border-radius:8px;padding:3px;border:1px solid var(--b)}
+.kbt{flex:1;padding:7px;border:none;border-radius:6px;cursor:pointer;
+  font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  background:transparent;color:var(--txtd);transition:all .2s}
+.kbt.on{background:var(--blue);color:#fff}
+
+.kb-text-area{display:none}.kb-text-area.on{display:flex;flex-direction:column;gap:10px}
+#kb-inp{width:100%;padding:11px 13px;background:var(--bg2);border:1px solid var(--bh);
+  border-radius:8px;font-family:var(--sans);font-size:15px;color:var(--txth);
+  outline:none;resize:vertical;min-height:72px}
+#kb-inp:focus{border-color:var(--cyan)}
+.kb-ia{display:flex;gap:8px}
+
+.kb-keys-area{display:none;flex-direction:column;gap:8px}.kb-keys-area.on{display:flex}
+.kb-row{display:flex;gap:5px;flex-wrap:wrap}
+.kk{
+  padding:10px 14px;background:var(--bg2);border:1px solid var(--b);border-radius:7px;
+  font-family:var(--mono);font-size:11px;font-weight:600;color:var(--txt);
+  cursor:pointer;transition:all .15s;user-select:none;-webkit-tap-highlight-color:transparent;
+  min-width:44px;text-align:center;
+}
+.kk:active{background:var(--blue);color:#fff;border-color:var(--blue);transform:scale(.93)}
+.kk.wide{flex:1}
+.kk.blue{color:var(--blue);border-color:var(--blue2)}
+.kk.green{color:var(--green);border-color:var(--green2)}
+.kk.amber{color:var(--amber);border-color:#ffbe0030}
+.kk.red{color:var(--red);border-color:#ff3f5730}
+.kk-section{font-family:var(--mono);font-size:9px;color:var(--txtd);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:2px}
+
+/* ── LATENCY METER ───────────────────────────────────────── */
+#lat-val{color:var(--green);font-weight:700}
+
+/* ── RESPONSIVE ──────────────────────────────────────────── */
+@media(max-width:600px){
+  header{padding:12px 14px}
+  .logo em.tag{display:none}
+  main{padding:16px 12px}
+  .card{padding:16px}
+  .cc{width:42px;height:54px;font-size:22px}
+  .ci{width:40px;height:54px;font-size:20px}
+  .qr-row{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══ HEADER ═════════════════════════════════════════════ -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🖥</div>
+    Remote<em>Link</em> <span class="logo-v">v2</span>
+  </div>
+  <div class="mode-toggle">
+    <button class="mbn on" id="btn-pc"    onclick="switchMode('pc')">💻 PC</button>
+    <button class="mbn"    id="btn-phone" onclick="switchMode('phone')">📱 Smartphone</button>
+  </div>
+</header>
+
+<main>
+
+<!-- ══ PC PANEL ════════════════════════════════════════════ -->
+<div class="panel on" id="panel-pc">
+
+  <!-- Agent banner -->
+  <div class="agent-banner wait" id="agent-banner">
+    <div class="ab-dot"></div>
+    <div class="ab-txt" id="agent-txt">🔄 Connexion à l'agent local…</div>
+    <button class="ab-btn" onclick="connectAgent()">Réessayer</button>
+  </div>
+
+  <div class="card">
+    <div class="ctitle">Code de connexion</div>
+    <div class="code-row" id="pc-code"></div>
+    <div class="qr-row">
+      <div id="qr-box"></div>
+      <div class="qr-txt">
+        <strong>📸 Scannez ou tapez le code</strong>
+        Ouvrez cette page sur votre smartphone → mode <em>Smartphone</em> → entrez le code.<br><br>
+        <span class="badge bg-b">🔒 WebRTC P2P chiffré</span>&nbsp;
+        <span class="badge bg-g" id="agent-badge" style="display:none">⚡ Contrôle réel actif</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ctitle">Partage d'écran &amp; statut</div>
+    <div class="sbar idle" id="pc-status">
+      <div class="sd"></div>
+      <span id="pc-stxt">En attente — lancez le partage d'écran</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="btn btn-p" id="btn-share" onclick="startShare()">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+        Partager l'écran
+      </button>
+      <button class="btn btn-g" id="btn-stop" onclick="stopShare()" style="display:none">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+        Arrêter
+      </button>
+      <button class="btn btn-g btn-sm" onclick="regenCode()">↻ Nouveau code</button>
+    </div>
+
+    <div class="pview-wrap" id="pview-wrap">
+      <div class="pover" id="pover">
+        <svg width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="opacity:.3"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+        <span>Aperçu de l'écran partagé</span>
+      </div>
+      <video id="pc-preview" autoplay muted playsinline style="display:none"></video>
+      <svg id="remote-cur" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 1L4 17L8 12.5L11.5 19L14 18L10.5 11.5L17 11.5Z" fill="#00e8ff" stroke="#003344" stroke-width="1.2"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ctitle">Guide de démarrage</div>
+    <div class="steps">
+      <div class="step">
+        <div class="snum">1</div>
+        <div class="stxt"><strong>Lancez l'agent Python</strong> — double-cliquez <code>start-agent.bat</code> (Windows) ou <code>./start-agent.sh</code> (Mac/Linux). Il installe automatiquement les dépendances.</div>
+      </div>
+      <div class="step">
+        <div class="snum">2</div>
+        <div class="stxt"><strong>Cliquez "Partager l'écran"</strong> — choisissez un onglet, une fenêtre ou l'écran entier dans Chrome/Edge</div>
+      </div>
+      <div class="step">
+        <div class="snum">3</div>
+        <div class="stxt"><strong>Sur votre smartphone</strong>, ouvrez cette même URL et entrez le code à 6 caractères</div>
+      </div>
+      <div class="step">
+        <div class="snum">4</div>
+        <div class="stxt"><strong>Contrôlez votre PC</strong> — tap = clic gauche, appui long = clic droit, double-tap = double clic, deux doigts = défilement</div>
+      </div>
+    </div>
+    <div class="notice">
+      <span class="ni">⚡</span>
+      <div>L'agent Python (<code>remotelink-agent.py</code>) doit tourner sur le PC pour le contrôle réel. Il écoute sur <code>localhost:8765</code> et utilise PyAutoGUI pour déplacer la souris et simuler les clics au niveau système d'exploitation.</div>
+    </div>
+  </div>
+
+</div><!-- /panel-pc -->
+
+<!-- ══ PHONE PANEL ══════════════════════════════════════════ -->
+<div class="panel" id="panel-phone">
+  <div class="card">
+    <div class="ctitle">Entrez le code du PC</div>
+    <div class="ci-row" id="ci-row"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-p" id="btn-conn" onclick="connectPhone()">
+        <span id="conn-lbl">Connecter</span>
+        <span id="conn-spin" class="spin" style="display:none"></span>
+      </button>
+      <button class="btn btn-g" onclick="clearCI()">Effacer</button>
+    </div>
+    <div class="sbar idle" id="ph-status" style="margin-top:14px">
+      <div class="sd"></div>
+      <span id="ph-stxt">Entrez le code puis connectez</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ctitle">Gestes de contrôle</div>
+    <div class="steps">
+      <div class="step"><div class="snum">👆</div><div class="stxt"><strong>Tap simple</strong> → Clic gauche</div></div>
+      <div class="step"><div class="snum">✌</div><div class="stxt"><strong>Double-tap</strong> → Double clic</div></div>
+      <div class="step"><div class="snum">✋</div><div class="stxt"><strong>Appui long (&gt;600ms)</strong> → Clic droit</div></div>
+      <div class="step"><div class="snum">↕</div><div class="stxt"><strong>Glisser 1 doigt</strong> → Déplace le curseur</div></div>
+      <div class="step"><div class="snum">🤞</div><div class="stxt"><strong>Glisser 2 doigts</strong> → Défilement (scroll)</div></div>
+    </div>
+  </div>
+</div>
+
+</main>
+</div><!-- /app -->
+
+<!-- ══ PHONE FULLSCREEN VIEWER ══════════════════════════════ -->
+<div id="pviewer">
+  <!-- Top bar -->
+  <div class="ptop">
+    <div class="ptop-title">
+      <div class="ptop-dot"></div>
+      RemoteLink — Contrôle actif
+    </div>
+    <div class="ptop-lat">⚡ <span id="lat-val">--</span>ms</div>
+  </div>
+
+  <!-- URL bar -->
+  <div class="urlbar">
+    <input id="url-input" type="url" placeholder="Naviguer vers une URL…" inputmode="url"
+      onkeydown="if(event.key==='Enter')navigateURL()"/>
+    <button class="url-btn" onclick="navigateURL()">Go →</button>
+  </div>
+
+  <!-- Video stream -->
+  <video id="rvideo" autoplay playsinline muted></video>
+
+  <!-- Phone toolbar -->
+  <div class="ptbar">
+    <button class="tb" onclick="toolKey('backspace')" title="Backspace">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="13" y2="14"/><line x1="13" y1="9" x2="18" y2="14"/></svg>
+      Suppr
+    </button>
+    <button class="tb" id="rclick-btn" onclick="toggleRightClickMode()" title="Clic droit">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="5"/><path d="M12 2v8M6 10h12"/></svg>
+      Droit
+    </button>
+    <button class="tb" onclick="toolScroll('up')" title="Scroll haut">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>
+      Haut
+    </button>
+    <button class="tb" onclick="toolScroll('down')" title="Scroll bas">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+      Bas
+    </button>
+    <button class="tb" onclick="openKB()" title="Clavier">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+      Clavier
+    </button>
+    <button class="tb danger" onclick="disconnectPhone()" title="Quitter">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      Quitter
+    </button>
+  </div>
+</div>
+
+<!-- Right-click mode indicator -->
+<div id="rclick-ind">🖱 MODE CLIC DROIT</div>
+
+<!-- ══ KEYBOARD OVERLAY ══════════════════════════════════════ -->
+<div id="kb">
+  <div class="kb-card">
+    <div class="kb-tabs">
+      <button class="kbt on" onclick="kbTab('text')">📝 Texte</button>
+      <button class="kbt"    onclick="kbTab('keys')">⌨ Touches</button>
+      <button class="kbt"    onclick="kbTab('hk')">⚡ Raccourcis</button>
+    </div>
+
+    <!-- Tab: TEXT -->
+    <div class="kb-text-area on" id="kb-text">
+      <textarea id="kb-inp" placeholder="Tapez le texte à envoyer sur le PC…" rows="3" autocomplete="off" spellcheck="false"></textarea>
+      <div class="kb-ia">
+        <button class="btn btn-p" onclick="sendKBText()">Envoyer ↵</button>
+        <button class="btn btn-g" onclick="closeKB()">Fermer</button>
+      </div>
+    </div>
+
+    <!-- Tab: KEYS -->
+    <div class="kb-keys-area" id="kb-keys">
+      <div class="kk-section">Navigation</div>
+      <div class="kb-row">
+        <button class="kk blue" onclick="sk('enter')">↵ Entrée</button>
+        <button class="kk" onclick="sk('tab')">⇥ Tab</button>
+        <button class="kk" onclick="sk('backspace')">⌫ Suppr</button>
+        <button class="kk" onclick="sk('delete')">Del</button>
+        <button class="kk" onclick="sk('esc')">Esc</button>
+      </div>
+      <div class="kb-row" style="margin-top:6px">
+        <button class="kk wide" onclick="sk('up')">↑</button>
+        <button class="kk wide" onclick="sk('down')">↓</button>
+        <button class="kk wide" onclick="sk('left')">←</button>
+        <button class="kk wide" onclick="sk('right')">→</button>
+      </div>
+      <div class="kb-row" style="margin-top:6px">
+        <button class="kk" onclick="sk('home')">Home</button>
+        <button class="kk" onclick="sk('end')">End</button>
+        <button class="kk" onclick="sk('pageup')">PgUp</button>
+        <button class="kk" onclick="sk('pagedown')">PgDn</button>
+      </div>
+      <div class="kk-section" style="margin-top:12px">Fonctions</div>
+      <div class="kb-row">
+        <button class="kk amber" onclick="sk('f1')">F1</button>
+        <button class="kk amber" onclick="sk('f2')">F2</button>
+        <button class="kk amber" onclick="sk('f3')">F3</button>
+        <button class="kk amber" onclick="sk('f4')">F4</button>
+        <button class="kk amber" onclick="sk('f5')">F5</button>
+        <button class="kk amber" onclick="sk('f11')">F11</button>
+        <button class="kk amber" onclick="sk('f12')">F12</button>
+      </div>
+      <button class="btn btn-g btn-sm" style="margin-top:12px;width:100%" onclick="closeKB()">Fermer</button>
+    </div>
+
+    <!-- Tab: SHORTCUTS -->
+    <div class="kb-keys-area" id="kb-hk">
+      <div class="kk-section">Presse-papier</div>
+      <div class="kb-row">
+        <button class="kk green" onclick="hk('ctrl','c')">Copier</button>
+        <button class="kk green" onclick="hk('ctrl','v')">Coller</button>
+        <button class="kk green" onclick="hk('ctrl','x')">Couper</button>
+        <button class="kk green" onclick="hk('ctrl','a')">Tout sél.</button>
+      </div>
+      <div class="kk-section" style="margin-top:12px">Édition</div>
+      <div class="kb-row">
+        <button class="kk blue" onclick="hk('ctrl','z')">Annuler</button>
+        <button class="kk blue" onclick="hk('ctrl','y')">Rétablir</button>
+        <button class="kk blue" onclick="hk('ctrl','s')">Sauvegarder</button>
+        <button class="kk blue" onclick="hk('ctrl','f')">Chercher</button>
+      </div>
+      <div class="kk-section" style="margin-top:12px">Navigation web</div>
+      <div class="kb-row">
+        <button class="kk" onclick="hk('ctrl','t')">Nouvel onglet</button>
+        <button class="kk" onclick="hk('ctrl','w')">Fermer onglet</button>
+        <button class="kk" onclick="hk('ctrl','l')">Barre URL</button>
+        <button class="kk" onclick="hk('ctrl','r')">Recharger</button>
+      </div>
+      <div class="kk-section" style="margin-top:12px">Système</div>
+      <div class="kb-row">
+        <button class="kk amber" onclick="hk('alt','tab')">Alt+Tab</button>
+        <button class="kk amber" onclick="hk('alt','f4')">Fermer app</button>
+        <button class="kk amber" onclick="hk('win','d')">Bureau</button>
+        <button class="kk amber" onclick="hk('ctrl','alt','t')">Terminal</button>
+      </div>
+      <button class="btn btn-g btn-sm" style="margin-top:14px;width:100%" onclick="closeKB()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//   STATE
+// ═══════════════════════════════════════════════════════════
+let mode        = 'pc';
+let peer        = null;
+let dataCon     = null;
+let mediaCon    = null;
+let stream      = null;
+let agentWS     = null;
+let agentOK     = false;
+let isSharing   = false;
+let rightMode   = false;
+let pingedAt    = 0;
+let pcCode      = '';
+let screenW     = screen.width;
+let screenH     = screen.height;
+
+// ── MODE ────────────────────────────────────────────────────
+function switchMode(m) {
+  mode = m;
+  ['pc','phone'].forEach(x => {
+    document.getElementById('panel-'+x).classList.toggle('on', x===m);
+    document.getElementById('btn-'+x).classList.toggle('on', x===m);
+  });
+  if (m === 'phone') buildCI();
+}
+
+function autoDetect() {
+  const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768;
+  const code   = new URLSearchParams(location.search).get('code');
+  if (mobile || code) {
+    switchMode('phone');
+    if (code) prefillCI(code);
+  }
+}
+
+// ── AGENT WEBSOCKET (PC side) ────────────────────────────────
+function connectAgent() {
+  setAgent('wait','🔄 Connexion à l\'agent local (ws://localhost:8765)…');
+  if (agentWS) { try { agentWS.close(); } catch(e){} }
+
+  agentWS = new WebSocket('ws://localhost:8765');
+
+  agentWS.onopen = () => {
+    agentOK = true;
+    setAgent('ok','✅ Agent PC connecté — contrôle souris/clavier réel actif');
+    document.getElementById('agent-badge').style.display = 'inline-flex';
+    pingAgent();
+  };
+
+  agentWS.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'screen_info') {
+        screenW = d.width; screenH = d.height;
+      }
+      if (d.type === 'pong') {
+        const lat = Date.now() - pingedAt;
+        document.getElementById('lat-val') && (document.getElementById('lat-val').textContent = lat);
+      }
+    } catch(e){}
+  };
+
+  agentWS.onclose = () => {
+    agentOK = false;
+    document.getElementById('agent-badge').style.display = 'none';
+    setAgent('err','⚠ Agent déconnecté — lancez start-agent.bat (Windows) ou start-agent.sh (Mac/Linux)');
+    setTimeout(() => { if (!agentOK) connectAgent(); }, 4000);
+  };
+
+  agentWS.onerror = () => {
+    agentOK = false;
+    document.getElementById('agent-badge').style.display = 'none';
+    setAgent('err','⚠ Agent introuvable — lancez remotelink-agent.py sur ce PC');
+  };
+}
+
+function sendAgent(cmd) {
+  if (agentWS && agentWS.readyState === WebSocket.OPEN) {
+    try { agentWS.send(JSON.stringify(cmd)); } catch(e){}
+  }
+}
+
+function pingAgent() {
+  if (!agentOK) return;
+  pingedAt = Date.now();
+  sendAgent({ type: 'ping' });
+  setTimeout(pingAgent, 3000);
+}
+
+function setAgent(state, txt) {
+  const b = document.getElementById('agent-banner');
+  b.className = 'agent-banner ' + state;
+  document.getElementById('agent-txt').textContent = txt;
+}
+
+// ── PC CODE & QR ────────────────────────────────────────────
+function genCode() {
+  const c = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  return Array.from({length:6}, () => c[Math.floor(Math.random()*c.length)]).join('');
+}
+function peerIdFrom(code) { return 'rlnk2-' + code.toLowerCase(); }
+
+function renderCode(code) {
+  document.getElementById('pc-code').innerHTML =
+    code.split('').map(c => `<div class="cc">${c}</div>`).join('');
+}
+
+function buildQR(code) {
+  const box = document.getElementById('qr-box');
+  box.innerHTML = '';
+  const url = location.href.split('?')[0] + '?code=' + code;
+  try {
+    new QRCode(box, { text:url, width:130, height:130, colorDark:'#00e8ff', colorLight:'#0d1526', correctLevel:QRCode.CorrectLevel.M });
+  } catch(e) {
+    box.innerHTML = `<div style="width:130px;height:130px;display:grid;place-items:center;font-size:11px;color:var(--txtd);text-align:center;padding:8px">QR indispo<br/><br/>${code}</div>`;
+  }
+}
+
+function initPC() {
+  pcCode = genCode();
+  renderCode(pcCode);
+  buildQR(pcCode);
+  initPCPeer(pcCode);
+}
+
+function initPCPeer(code) {
+  setPCStatus('idle','🔄 Initialisation signalisation WebRTC…');
+  if (peer) { try { peer.destroy(); } catch(e){} }
+
+  peer = new Peer(peerIdFrom(code), {
+    config: { iceServers: [
+      { urls:'stun:stun.l.google.com:19302' },
+      { urls:'stun:stun1.l.google.com:19302' },
+      { urls:'stun:global.stun.twilio.com:3478' },
+    ]}
+  });
+
+  peer.on('open', () => setPCStatus('idle','⌛ En attente d\'un smartphone…  Code: '+code));
+
+  peer.on('connection', conn => {
+    dataCon = conn;
+    setPCStatus('wait','📱 Smartphone détecté…');
+    conn.on('data', handlePCData);
+    conn.on('close', () => {
+      setPCStatus('idle','📴 Smartphone déconnecté');
+      hideCursor();
+    });
+    if (isSharing && stream) callPhone();
+    else setPCStatus('wait','📱 Connecté — partagez votre écran pour commencer');
+  });
+
+  peer.on('error', err => {
+    if (err.type === 'unavailable-id') { setTimeout(regenCode, 1200); return; }
+    setPCStatus('err','⚠ '+err.message);
+  });
+}
+
+function callPhone() {
+  if (!dataCon || !stream) return;
+  mediaCon = peer.call(dataCon.peer, stream);
+  mediaCon.on('error', e => console.warn(e));
+  setPCStatus('conn','✅ Flux actif  •  Agent: '+(agentOK?'🟢 réel':'🔴 visuel seulement'));
+}
+
+async function startShare() {
+  try {
+    document.getElementById('btn-share').disabled = true;
+    document.getElementById('btn-share').innerHTML = '<span class="spin"></span> Partage…';
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video:{ cursor:'always', frameRate:{ ideal:30, max:60 } }, audio:false
+    });
+    isSharing = true;
+    const v = document.getElementById('pc-preview');
+    v.srcObject = stream; v.style.display = 'block';
+    document.getElementById('pover').style.display = 'none';
+    document.getElementById('btn-stop').style.display = 'inline-flex';
+    document.getElementById('btn-share').style.display = 'none';
+    stream.getVideoTracks()[0].addEventListener('ended', stopShare);
+    if (dataCon && dataCon.open) callPhone();
+    else setPCStatus('wait','⌛ Écran partagé — en attente du smartphone…');
+  } catch(e) {
+    setPCStatus('err','⚠ Partage refusé: '+e.message);
+    resetShareBtn();
+  }
+}
+
+function stopShare() {
+  if (stream) { stream.getTracks().forEach(t=>t.stop()); stream = null; }
+  if (mediaCon) { try { mediaCon.close(); } catch(e){} mediaCon = null; }
+  isSharing = false;
+  const v = document.getElementById('pc-preview');
+  v.srcObject = null; v.style.display = 'none';
+  document.getElementById('pover').style.display = 'flex';
+  document.getElementById('btn-stop').style.display = 'none';
+  resetShareBtn();
+  setPCStatus('idle','⏹ Partage arrêté');
+  hideCursor();
+}
+
+function resetShareBtn() {
+  const b = document.getElementById('btn-share');
+  b.style.display = 'inline-flex'; b.disabled = false;
+  b.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg> Partager l\'écran';
+}
+
+function regenCode() { stopShare(); initPC(); }
+
+// ── PC DATA RECEIVE ──────────────────────────────────────────
+function handlePCData(data) {
+  if (!data || !data.type) return;
+  const wrap  = document.getElementById('pview-wrap');
+  const video = document.getElementById('pc-preview');
+  if (!video || video.style.display === 'none') return;
+
+  // ─ Visual cursor on preview (regardless of agent) ─
+  const { cx, cy, rx, ry } = videoContentCoords(video, data.x, data.y);
+  moveCursor(cx, cy);
+
+  if (data.type === 'click' || data.type === 'tap') {
+    spawnRing(cx, cy, data.button === 'right' ? 'right' : 'left', data.double);
+  }
+  if (data.type === 'keyboard') showKBIndicator(data.text);
+  if (data.type === 'scroll')   showScrollInd(data.dir);
+
+  // ─ Forward to agent for real OS control ─
+  sendAgent(data);
+}
+
+function videoContentCoords(video, nx, ny) {
+  const ew = video.clientWidth, eh = video.clientHeight;
+  const ea = ew / eh;
+  const va = (video.videoWidth || ew) / (video.videoHeight || eh);
+  let cw, ch, ox, oy;
+  if (va > ea) { cw=ew; ch=ew/va; ox=0; oy=(eh-ch)/2; }
+  else          { ch=eh; cw=eh*va; ox=(ew-cw)/2; oy=0; }
+  const vr = video.getBoundingClientRect();
+  const wr = document.getElementById('pview-wrap').getBoundingClientRect();
+  const cx = (vr.left-wr.left) + ox + nx*cw;
+  const cy = (vr.top -wr.top)  + oy + ny*ch;
+  return { cx, cy };
+}
+
+function moveCursor(x, y) {
+  const cur = document.getElementById('remote-cur');
+  cur.style.display = 'block';
+  cur.style.left = x + 'px'; cur.style.top = y + 'px';
+}
+function hideCursor() { document.getElementById('remote-cur').style.display = 'none'; }
+
+function spawnRing(x, y, type, dbl) {
+  const el = document.createElement('div');
+  el.className = 'rclick-ring';
+  el.style.cssText = `left:${x}px;top:${y}px;width:${dbl?48:36}px;height:${dbl?48:36}px;border:2px solid ${type==='right'?'var(--amber)':'var(--cyan)'}`;
+  document.getElementById('pview-wrap').appendChild(el);
+  setTimeout(()=>el.remove(), 600);
+}
+
+function showKBIndicator(text) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:absolute;top:10px;right:10px;background:rgba(0,232,255,.12);border:1px solid var(--cyan);color:var(--cyan);font-family:var(--mono);font-size:12px;padding:5px 11px;border-radius:6px;pointer-events:none;z-index:20;animation:fadeUp .2s ease both';
+  el.textContent = '⌨ '+(text.length>24?text.slice(0,24)+'…':text);
+  document.getElementById('pview-wrap').appendChild(el);
+  setTimeout(()=>el.remove(), 2000);
+}
+
+function showScrollInd(dir) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,232,255,.1);border:1px solid var(--cyan);color:var(--cyan);font-family:var(--mono);font-size:20px;padding:10px 18px;border-radius:8px;pointer-events:none;z-index:20;animation:fadeUp .15s ease both';
+  el.textContent = dir==='up'?'↑ Scroll':'↓ Scroll';
+  document.getElementById('pview-wrap').appendChild(el);
+  setTimeout(()=>el.remove(), 600);
+}
+
+function setPCStatus(s, t) {
+  document.getElementById('pc-status').className = 'sbar '+s;
+  document.getElementById('pc-stxt').textContent = t;
+}
+
+// ═══════════════════════════════════════════════════════════
+//   PHONE MODE
+// ═══════════════════════════════════════════════════════════
+function buildCI() {
+  const row = document.getElementById('ci-row');
+  if (row.children.length === 6) return;
+  row.innerHTML = '';
+  for (let i=0; i<6; i++) {
+    const inp = document.createElement('input');
+    inp.type='text'; inp.maxLength=1; inp.className='ci'; inp.id='ci'+i;
+    inp.setAttribute('autocomplete','off'); inp.setAttribute('spellcheck','false');
+    inp.addEventListener('input', e => {
+      const v = e.target.value.replace(/[^a-zA-Z0-9]/g,'');
+      e.target.value = v.toUpperCase().slice(-1);
+      if (v && i<5) document.getElementById('ci'+(i+1)).focus();
+    });
+    inp.addEventListener('keydown', e => {
+      if (e.key==='Backspace' && !e.target.value && i>0) document.getElementById('ci'+(i-1)).focus();
+      if (e.key==='Enter') connectPhone();
+    });
+    inp.addEventListener('paste', e => {
+      e.preventDefault();
+      const p = (e.clipboardData||window.clipboardData).getData('text').toUpperCase().replace(/[^A-Z0-9]/g,'');
+      p.slice(0,6).split('').forEach((c,j) => { const el=document.getElementById('ci'+j); if(el) el.value=c; });
+      const last = Math.min(p.length, 5);
+      document.getElementById('ci'+last)?.focus();
+    });
+    row.appendChild(inp);
+  }
+}
+
+function prefillCI(code) {
+  buildCI();
+  code.toUpperCase().slice(0,6).split('').forEach((c,i)=>{ const el=document.getElementById('ci'+i); if(el) el.value=c; });
+}
+
+function getCI() {
+  return Array.from({length:6},(_,i)=>document.getElementById('ci'+i)?.value||'').join('');
+}
+
+function clearCI() {
+  for(let i=0;i<6;i++){ const e=document.getElementById('ci'+i); if(e) e.value=''; }
+  document.getElementById('ci0')?.focus();
+}
+
+function connectPhone() {
+  const code = getCI();
+  if (code.length<6) { setPhStatus('err','⚠ Entrez les 6 caractères'); return; }
+  document.getElementById('conn-lbl').textContent = 'Connexion…';
+  document.getElementById('conn-spin').style.display = 'inline-block';
+  document.getElementById('btn-conn').disabled = true;
+  setPhStatus('wait','🔄 Connexion au serveur…');
+
+  if (peer) { try { peer.destroy(); } catch(e){} }
+
+  peer = new Peer({ config:{ iceServers:[
+    {urls:'stun:stun.l.google.com:19302'},
+    {urls:'stun:stun1.l.google.com:19302'},
+  ]}});
+
+  peer.on('open', () => {
+    setPhStatus('wait','🔄 Connexion au PC…');
+    dataCon = peer.connect(peerIdFrom(code));
+    dataCon.on('open', () => setPhStatus('conn','✅ Connecté — attente flux vidéo…'));
+    dataCon.on('close', () => { setPhStatus('idle','📴 PC déconnecté'); closeViewer(); resetConnBtn(); });
+    dataCon.on('error', e => { setPhStatus('err','⚠ '+e.message); resetConnBtn(); });
+  });
+
+  peer.on('call', call => {
+    call.answer();
+    mediaCon = call;
+    call.on('stream', s => {
+      const v = document.getElementById('rvideo');
+      v.srcObject = s;
+      v.play().catch(()=>{});
+      openViewer();
+      setPhStatus('conn','✅ Flux vidéo actif');
+      startLatencyPing();
+    });
+    call.on('close', () => { closeViewer(); setPhStatus('idle','📴 Flux terminé'); });
+  });
+
+  peer.on('error', err => {
+    const msg = err.type==='peer-unavailable'
+      ? '⚠ PC introuvable — vérifiez le code et le partage d\'écran'
+      : '⚠ '+err.message;
+    setPhStatus('err', msg);
+    resetConnBtn();
+  });
+
+  setTimeout(() => {
+    if (!mediaCon) {
+      const s = document.getElementById('ph-status');
+      if (s.classList.contains('wait')) {
+        setPhStatus('err','⌛ Timeout — lancez le partage d\'écran sur le PC');
+        resetConnBtn();
+      }
+    }
+  }, 20000);
+}
+
+function resetConnBtn() {
+  document.getElementById('conn-lbl').textContent = 'Connecter';
+  document.getElementById('conn-spin').style.display = 'none';
+  document.getElementById('btn-conn').disabled = false;
+}
+
+function setPhStatus(s,t) {
+  document.getElementById('ph-status').className = 'sbar '+s;
+  document.getElementById('ph-stxt').textContent = t;
+}
+
+// ── PHONE VIEWER ─────────────────────────────────────────────
+function openViewer() {
+  document.getElementById('pviewer').classList.add('on');
+  bindTouch();
+  document.getElementById('url-input').value = '';
+}
+
+function closeViewer() { document.getElementById('pviewer').classList.remove('on'); }
+
+function disconnectPhone() {
+  closeViewer();
+  if (dataCon) { try { dataCon.close(); } catch(e){} dataCon = null; }
+  if (mediaCon) { try { mediaCon.close(); } catch(e){} mediaCon = null; }
+  if (peer) { try { peer.destroy(); } catch(e){} peer = null; }
+  resetConnBtn();
+  setPhStatus('idle','Déconnecté');
+}
+
+// ── LATENCY PING ─────────────────────────────────────────────
+let latPingInterval = null;
+function startLatencyPing() {
+  if (latPingInterval) clearInterval(latPingInterval);
+  latPingInterval = setInterval(() => {
+    const t = Date.now();
+    sendData({ type:'ping', t });
+    // We fake it slightly since there's no pong mechanism via PeerJS
+    // but we measure round-trip visually
+  }, 5000);
+}
+
+// ── SEND TO PC ────────────────────────────────────────────────
+function sendData(obj) {
+  if (dataCon && dataCon.open) { try { dataCon.send(obj); } catch(e){} }
+}
+
+// ── COORDINATE HELPERS ────────────────────────────────────────
+function getVideoRatio(cx, cy, el) {
+  const rect  = el.getBoundingClientRect();
+  const ew = rect.width, eh = rect.height;
+  const vw = el.videoWidth || ew, vh = el.videoHeight || eh;
+  const ea = ew/eh, va = vw/vh;
+  let cw, ch, ox, oy;
+  if (va > ea) { cw=ew; ch=ew/va; ox=0; oy=(eh-ch)/2; }
+  else          { ch=eh; cw=eh*va; ox=(ew-cw)/2; oy=0; }
+  const lx = cx - rect.left - ox;
+  const ly = cy - rect.top  - oy;
+  return {
+    x: Math.max(0, Math.min(1, lx/cw)),
+    y: Math.max(0, Math.min(1, ly/ch)),
+  };
+}
+
+// ── TOUCH GESTURES ────────────────────────────────────────────
+let tsTime=0, tsSX=0, tsSY=0, tsDrag=false, tsTimer=null, lastTapT=0;
+let pinchY0=null, pinchSendT=0;
+
+function bindTouch() {
+  const v = document.getElementById('rvideo');
+  v.removeEventListener('touchstart', onTS);
+  v.removeEventListener('touchmove',  onTM);
+  v.removeEventListener('touchend',   onTE);
+  v.addEventListener('touchstart', onTS, { passive:false });
+  v.addEventListener('touchmove',  onTM, { passive:false });
+  v.addEventListener('touchend',   onTE, { passive:false });
+}
+
+function onTS(e) {
+  e.preventDefault();
+  if (e.touches.length === 2) { pinchY0 = (e.touches[0].clientY + e.touches[1].clientY)/2; return; }
+  pinchY0 = null;
+  const t = e.touches[0];
+  tsTime=Date.now(); tsSX=t.clientX; tsSY=t.clientY; tsDrag=false;
+
+  const pos = getVideoRatio(t.clientX, t.clientY, e.currentTarget);
+  sendData({ type:'move', ...pos });
+
+  // Long press → right click
+  tsTimer = setTimeout(() => {
+    tsTimer = null;
+    if (!tsDrag) {
+      const pos2 = getVideoRatio(t.clientX, t.clientY, e.currentTarget);
+      sendData({ type:'click', ...pos2, button:'right', double:false });
+      dot(t.clientX, t.clientY, 'right');
+    }
+  }, 620);
+}
+
+function onTM(e) {
+  e.preventDefault();
+
+  // Two-finger scroll
+  if (e.touches.length === 2) {
+    const avgY = (e.touches[0].clientY + e.touches[1].clientY)/2;
+    if (pinchY0 !== null) {
+      const delta = pinchY0 - avgY;
+      const now = Date.now();
+      if (Math.abs(delta) > 6 && now - pinchSendT > 80) {
+        const cx = (e.touches[0].clientX + e.touches[1].clientX)/2;
+        const cy = (e.touches[0].clientY + e.touches[1].clientY)/2;
+        const pos = getVideoRatio(cx, cy, e.currentTarget);
+        sendData({ type:'scroll', dir: delta>0?'up':'down', amount: Math.min(10, Math.abs(delta)/8), ...pos });
+        pinchSendT = now;
+        pinchY0 = avgY;
+      }
+    }
+    return;
+  }
+
+  const t = e.touches[0];
+  const dx = t.clientX-tsSX, dy = t.clientY-tsSY;
+  if (Math.abs(dx)>8 || Math.abs(dy)>8) {
+    tsDrag = true;
+    if (tsTimer) { clearTimeout(tsTimer); tsTimer=null; }
+  }
+  if (tsDrag) {
+    const pos = getVideoRatio(t.clientX, t.clientY, e.currentTarget);
+    sendData({ type:'move', ...pos });
+  }
+}
+
+function onTE(e) {
+  e.preventDefault();
+  if (tsTimer) { clearTimeout(tsTimer); tsTimer=null; }
+  if (tsDrag || e.touches.length >= 1) return;
+
+  const t = e.changedTouches[0];
+  const pos = getVideoRatio(t.clientX, t.clientY, e.currentTarget);
+  const now = Date.now();
+
+  if (now - lastTapT < 320) {
+    // Double tap
+    sendData({ type:'click', ...pos, button:'left', double:true });
+    dot(t.clientX, t.clientY, 'double');
+    lastTapT = 0;
+  } else {
+    lastTapT = now;
+    const savedPos = {...pos};
+    const tx = t.clientX, ty = t.clientY;
+    setTimeout(() => {
+      if (lastTapT === now) {
+        // Single tap
+        const btn = rightMode ? 'right' : 'left';
+        sendData({ type:'click', ...savedPos, button:btn, double:false });
+        dot(tx, ty, btn === 'right' ? 'right' : 'left');
+        if (rightMode) { rightMode=false; updateRightBtn(); }
+      }
+    }, 320);
+  }
+}
+
+function dot(x, y, type) {
+  const el = document.createElement('div');
+  el.className = 'tdot '+type;
+  el.style.left = x+'px'; el.style.top = y+'px';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 450);
+}
+
+// ── RIGHT CLICK MODE ──────────────────────────────────────────
+function toggleRightClickMode() {
+  rightMode = !rightMode;
+  updateRightBtn();
+}
+function updateRightBtn() {
+  const btn = document.getElementById('rclick-btn');
+  const ind = document.getElementById('rclick-ind');
+  btn.classList.toggle('active', rightMode);
+  ind.classList.toggle('on', rightMode);
+}
+
+// ── TOOLBAR TOOLS ─────────────────────────────────────────────
+function toolScroll(dir) {
+  const v = document.getElementById('rvideo');
+  const rect = v.getBoundingClientRect();
+  const pos = { x:0.5, y:0.5 };
+  sendData({ type:'scroll', dir, amount:5, ...pos });
+}
+
+function toolKey(key) { sendData({ type:'key', key }); }
+function sk(key)      { sendData({ type:'key', key }); }
+function hk(...keys)  { sendData({ type:'hotkey', keys }); closeKB(); }
+
+// ── URL NAVIGATION ────────────────────────────────────────────
+function navigateURL() {
+  let url = document.getElementById('url-input').value.trim();
+  if (!url) return;
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  // Focus address bar on PC then type URL
+  sendData({ type:'hotkey', keys:['ctrl','l'] });
+  setTimeout(() => {
+    sendData({ type:'keyboard', text:url });
+    setTimeout(() => sendData({ type:'key', key:'enter' }), 150);
+  }, 300);
+  document.getElementById('url-input').value = '';
+  document.getElementById('url-input').blur();
+}
+
+// ── KEYBOARD OVERLAY ──────────────────────────────────────────
+let kbTabCurrent = 'text';
+
+function openKB() { document.getElementById('kb').classList.add('on'); }
+function closeKB() { document.getElementById('kb').classList.remove('on'); }
+
+function kbTab(t) {
+  kbTabCurrent = t;
+  document.querySelectorAll('.kbt').forEach((b,i)=>b.classList.toggle('on',['text','keys','hk'][i]===t));
+  document.getElementById('kb-text').classList.toggle('on', t==='text');
+  document.getElementById('kb-keys').classList.toggle('on', t==='keys');
+  document.getElementById('kb-hk').classList.toggle('on', t==='hk');
+}
+
+function sendKBText() {
+  const text = document.getElementById('kb-inp').value;
+  if (!text.trim()) { closeKB(); return; }
+  sendData({ type:'keyboard', text });
+  document.getElementById('kb-inp').value = '';
+  closeKB();
+}
+
+document.getElementById('kb-inp').addEventListener('keydown', e => {
+  if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendKBText(); }
+});
+
+document.getElementById('kb').addEventListener('click', e => {
+  if (e.target === document.getElementById('kb')) closeKB();
+});
+
+// ── INIT ──────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  autoDetect();
+  initPC();
+  buildCI();
+  connectAgent(); // Try to connect to Python agent
+});
+</script>
+</body>
+</html>
